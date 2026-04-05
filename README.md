@@ -102,23 +102,11 @@ export TG_VERSION=4.1.3                         # TigerGraph version
 export TG_LICENSE="<your-one-line-license-key>" # License key (must be a single line)
 
 # Optional — defaults shown
-export TG_NAMESPACE=tigergraph
-export TG_REPLICAS=3
-export TG_STORAGE_CLASS=standard
-export TG_STORAGE_SIZE=100Gi
-export TG_CPU_REQUEST=2
-export TG_CPU_LIMIT=4
-export TG_MEM_REQUEST=8Gi
-export TG_MEM_LIMIT=16Gi
-export TG_IMAGE_PULL_POLICY=IfNotPresent
-export KUBECONFIG=~/.kube/config
+maxConcurrentReconcilesOfTG 4   
+maxConcurrentReconcilesOfBackup 2  
+maxConcurrentReconcilesOfBackupSchedule 2  
+maxConcurrentReconcilesOfRestore 2  
 ```
-
-> ⚠️ **License key warning:** The license must be a single unbroken line. Verify with:
-> ```bash
-> echo -n "$TG_LICENSE" | wc -c   # character count — should be > 0
-> echo -n "$TG_LICENSE" | wc -l   # line count — must be 0 (no newlines)
-> ```
 
 ---
 
@@ -127,7 +115,7 @@ export KUBECONFIG=~/.kube/config
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/tigergraph/ecosys.git
+git clone https://github.com/somasundar-kapaka/agivant-tigergraph-assignment.git
 cd ecosys/k8s
 ```
 
@@ -140,7 +128,7 @@ kubectl create namespace tigergraph
 ### 3. Install the operator
 
 ```bash
-kubectl apply -f deploy/operator.yaml
+kubectl apply -f deploy
 kubectl get pods -n tigergraph -w   # wait for operator pod to reach Running
 ```
 
@@ -158,30 +146,34 @@ kubectl create secret generic tg-license \
 ```bash
 kubectl apply -f - <<EOF
 apiVersion: graphdb.tigergraph.com/v1alpha1
-kind: TigerGraphCluster
+kind: TigerGraph
 metadata:
-  name: tg-cluster
+  name: test-cluster
   namespace: tigergraph
 spec:
   image: docker.io/tigergraph/tigergraph-k8s:4.1.3
   imagePullPolicy: IfNotPresent
-  replicas: 3
+  ha: 1
+  listener:
+    type: LoadBalancer
+  privateKeyName: ssh-key-secret
+  replicas: 1 
+  licenseSecretName: tigergraph-license
   resources:
     requests:
       cpu: "2"
-      memory: "8Gi"
+      memory: 4Gi
     limits:
       cpu: "4"
-      memory: "16Gi"
+      memory: 8Gi
+
   storage:
     type: persistent-claim
     volumeClaimTemplate:
       resources:
         requests:
-          storage: 100Gi
-  license:
-    secretName: tg-license
-    secretKey: license
+          storage: 100G
+      storageClassName: gp3-wait
 EOF
 ```
 
@@ -192,7 +184,7 @@ EOF
 kubectl get pods -n tigergraph -w
 
 # Check CR status
-kubectl get tigergraphcluster tg-cluster -n tigergraph -o yaml | grep -A5 status
+kubectl get tigergraphcluster test-cluster -n tigergraph -o yaml | grep -A5 status
 
 # Confirm PVCs are Bound
 kubectl get pvc -n tigergraph
@@ -214,8 +206,7 @@ kubectl port-forward svc/tg-cluster-nginx-svc 14240:14240 -n tigergraph &
 open http://localhost:14240
 
 # GSQL Shell
-kubectl exec -it tg-cluster-0 -n tigergraph -- \
-  /home/tigergraph/tigergraph/app/cmd/gsql
+kubectl exec -it tg-cluster-0 -n tigergraph -- /home/tigergraph/tigergraph/app/cmd/gsql
 ```
 
 ---
@@ -273,33 +264,8 @@ The test suite is in `controllers/operator_test.go` and uses `controller-runtime
 
 ```bash
 # Run all tests
-go test ./controllers/... -v -count=1
-
-# Run a specific test
-go test ./controllers/... -run TestReconcileClusterCreation -v
-
-# Run only fault-tolerance tests
-go test ./controllers/... -run "TestFault|TestPVC|TestPDB" -v
-
-# Generate coverage report
-go test ./controllers/... -coverprofile=coverage.out
-go tool cover -html=coverage.out -o coverage.html
+go test ./controllers/... -v 
 ```
-
-### Test coverage
-
-| Category | Tests |
-|---|---|
-| Operator reconciliation | Cluster creation, scale up/down, version upgrade, license mount, resource limits |
-| CRD validation | Invalid replica count (0, even numbers), missing license ref, empty image |
-| Fault tolerance | Pod restart recovery, PVC preservation on pod delete, PDB creation, leader election |
-| Health probes | Readiness probe path/port/delay, liveness probe failure threshold |
-| Networking | Headless service, RESTPP external service |
-| Status | CR phase updated after reconcile |
-| Idempotency | 5× reconcile on unchanged CR produces no mutations |
-| Deletion | Finalizer removed cleanly during CR deletion |
-
----
 
 ## Fault Tolerance
 
