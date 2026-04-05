@@ -1,0 +1,29 @@
+apiVersion: graphdb.tigergraph.com/v1alpha1
+kind: TigerGraph
+metadata:
+  name: test-cluster
+  namespace: tigergraph
+spec:
+  image: docker.io/tigergraph/tigergraph-k8s:4.1.3
+  imagePullPolicy: IfNotPresent
+  ha: 1
+  listener:
+    type: LoadBalancer
+  privateKeyName: ssh-key-secret
+  replicas: 1 
+  licenseSecretName: tigergraph-license
+  resources:
+    requests:
+      cpu: "2"
+      memory: 4Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+
+  storage:
+    type: persistent-claim
+    volumeClaimTemplate:
+      resources:
+        requests:
+          storage: 100G
+      storageClassName: gp3-wait
