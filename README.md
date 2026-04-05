@@ -34,6 +34,7 @@ This project evaluates the TigerGraph Kubernetes Operator by deploying a product
 ---
 
 ## Architecture
+![alt text](image.png)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -76,6 +77,10 @@ This project evaluates the TigerGraph Kubernetes Operator by deploying a product
 | `tg-data-<n>` | PersistentVolumeClaim | Durable graph data storage per pod |
 | `tg-license` | Secret | TigerGraph license key (encrypted at rest) |
 
+---
+
+## Custom Resource Relationships
+![alt text](image-1.png)
 ---
 
 ## Prerequisites
