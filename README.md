@@ -47,9 +47,9 @@ This project evaluates the TigerGraph Kubernetes Operator by deploying a product
 │            │                                            │
 │            ▼                                            │
 │  ┌─────────────────────────────────────────────────┐    │
-│  │              StatefulSet: tg-cluster            │    │
+│  │              StatefulSet: test-cluster            │    │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐      │    │
-│  │  │tg-cluster│  │tg-cluster│  │tg-cluster│      │    │
+│  │  │test-cluster│  │test-cluster│  │test-cluster│      │    │
 │  │  │    -0    │  │    -1    │  │    -2    │      │    │
 │  │  └────┬─────┘  └────┬─────┘  └────┬─────┘      │    │
 │  │       │              │              │            │    │
@@ -70,10 +70,10 @@ This project evaluates the TigerGraph Kubernetes Operator by deploying a product
 |---|---|---|
 | `tigergraph-operator` | Deployment | Operator controller — watches CRD, reconciles state |
 | `TigerGraphCluster` | CRD | Custom resource defining the cluster spec |
-| `tg-cluster-0..N` | StatefulSet Pods | TigerGraph GSQL / GPE / GSE / RESTPP / GUI |
-| `tg-cluster-headless` | Headless Service | Stable DNS for pod-to-pod communication |
-| `tg-cluster-restpp-svc` | Service | External RESTPP API access on port 9000 |
-| `tg-cluster-nginx-svc` | Service | GraphStudio web UI on port 14240 |
+| `test-cluster-0..N` | StatefulSet Pods | TigerGraph GSQL / GPE / GSE / RESTPP / GUI |
+| `test-cluster-headless` | Headless Service | Stable DNS for pod-to-pod communication |
+| `test-cluster-internal-service` | Service | External RESTPP API access on port 9000 |
+| `test-cluster-nginx-external-service` | Service | GraphStudio web UI on port 14240 |
 | `tg-data-<n>` | PersistentVolumeClaim | Durable graph data storage per pod |
 | `tg-license` | Secret | TigerGraph license key (encrypted at rest) |
 
@@ -189,7 +189,7 @@ EOF
 kubectl get pods -n tigergraph -w
 
 # Check CR status
-kubectl get tigergraphcluster test-cluster -n tigergraph -o yaml | grep -A5 status
+kubectl get tigergraph test-cluster -n tigergraph -o yaml | grep -A5 status
 
 # Confirm PVCs are Bound
 kubectl get pvc -n tigergraph
@@ -202,16 +202,16 @@ kubectl get svc -n tigergraph
 
 ```bash
 # RESTPP API
-kubectl port-forward svc/tg-cluster-restpp-svc 9000:9000 -n tigergraph &
+kubectl port-forward svc/test-cluster-internal-service 9000:9000 -n tigergraph &
 curl http://localhost:9000/restpp/ping
 # Expected: {"error":false,"message":"pong","results":[]}
 
 # GraphStudio Web UI
-kubectl port-forward svc/tg-cluster-nginx-svc 14240:14240 -n tigergraph &
+kubectl port-forward svc/test-cluster-nginx-external-service 14240:14240 -n tigergraph &
 open http://localhost:14240
 
 # GSQL Shell
-kubectl exec -it tg-cluster-0 -n tigergraph -- /home/tigergraph/tigergraph/app/cmd/gsql
+kubectl exec -it test-cluster-0 -n tigergraph -- /home/tigergraph/tigergraph/app/cmd/gsql
 ```
 
 ---
@@ -295,10 +295,10 @@ go test ./controllers/... -v
 kubectl get pods -n tigergraph -w
 
 # Terminal 2 — simulate a pod failure
-kubectl delete pod tg-cluster-0 -n tigergraph
+kubectl delete pod test-cluster-0 -n tigergraph
 ```
 
-Expected: `tg-cluster-0` transitions to `Terminating`, then a new pod is created and returns to `1/1 Running` within ~2 minutes — no manual intervention required.
+Expected: `test-cluster-0` transitions to `Terminating`, then a new pod is created and returns to `1/1 Running` within ~2 minutes — no manual intervention required.
 
 ### production additions
 
@@ -307,7 +307,7 @@ Expected: `tg-cluster-0` transitions to `Terminating`, then a new pod is created
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: tg-cluster-pdb
+  name: test-cluster-pdb
   namespace: tigergraph
 spec:
   minAvailable: 2
@@ -359,7 +359,7 @@ The following screenshots should be captured and attached to your submission:
 | 10 | CR status: Ready | `kubectl get tigergraphcluster -o yaml` |
 | 11 | Services created | `kubectl get svc -n tigergraph` |
 | 12 | GraphStudio Web UI | Browser at `http://13.201.115.5:30459` |
-| **13** | **Pod self-healing** | **`kubectl delete pod tg-cluster-0` then watch recovery** |
+| **13** | **Pod self-healing** | **`kubectl delete pod test-cluster-0` then watch recovery** |
 | 14 | Cluster events log | `kubectl get events -n tigergraph` |
 | 15 | Operator reconcile logs | `kubectl logs deploy/tigergraph-operator-controller-manager -n tigergraph` |
 | **16** | **Unit tests passing** | **`go test ./controllers/... -v`** |
