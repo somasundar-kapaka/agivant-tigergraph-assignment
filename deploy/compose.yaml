@@ -1,0 +1,46 @@
+services:
+  tigergraph:
+    image: tigergraph/tigergraph:4.1.3
+    container_name: tigergraph-4.1.3
+    hostname: tigergraph
+    platform: linux/amd64
+
+    ports:
+      - "9000:9000"    # REST++ API
+      - "14240:14240"  # GraphStudio & Admin Portal
+      - "2222:22"      # SSH access
+
+    environment:
+      TG_LICENSE: "${TG_LICENSE}"
+
+    volumes:
+      - tg_data:/home/tigergraph/tigergraph/data
+      - tg_app:/home/tigergraph/tigergraph/app
+
+    shm_size: "2gb"
+
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8G
+        reservations:
+          cpus: "2"
+          memory: 4G
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/api/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+    restart: unless-stopped
+
+volumes:
+  tg_data:
+    driver: local
+  tg_log:
+    driver: local
+  tg_app:
+    driver: local

@@ -69,13 +69,12 @@ This project evaluates the TigerGraph Kubernetes Operator by deploying a product
 | Component | Type | Purpose |
 |---|---|---|
 | `tigergraph-operator` | Deployment | Operator controller — watches CRD, reconciles state |
-| `TigerGraphCluster` | CRD | Custom resource defining the cluster spec |
+| `TigerGraph   ` | CRD | Custom resource defining the cluster spec |
 | `test-cluster-0..N` | StatefulSet Pods | TigerGraph GSQL / GPE / GSE / RESTPP / GUI |
-| `test-cluster-headless` | Headless Service | Stable DNS for pod-to-pod communication |
-| `test-cluster-internal-service` | Service | External RESTPP API access on port 9000 |
+| `test-cluster-internal-service` | Headless Service | Stable DNS for pod-to-pod communication |
 | `test-cluster-nginx-external-service` | Service | GraphStudio web UI on port 14240 |
-| `tg-data-<n>` | PersistentVolumeClaim | Durable graph data storage per pod |
-| `tg-license` | Secret | TigerGraph license key (encrypted at rest) |
+| `tg-data-test-cluster` | PersistentVolumeClaim | Durable graph data storage per pod |
+| `tigergraph-license` | Secret | TigerGraph license key (encrypted at rest) |
 
 ---
 
@@ -121,7 +120,7 @@ maxConcurrentReconcilesOfRestore 2
 
 ```bash
 git clone https://github.com/somasundar-kapaka/agivant-tigergraph-assignment.git
-cd ecosys/k8s
+cd deploy
 ```
 
 ### 2. Create namespace
@@ -129,60 +128,48 @@ cd ecosys/k8s
 ```bash
 kubectl create namespace tigergraph
 ```
-
-### 3. Install the operator
+### 3. Create ssh keys
 
 ```bash
-kubectl apply -f deploy
+echo -e 'y\\n' | ssh-keygen -b 4096 -t rsa -f $HOME/.ssh/tigergraph_rsa -q -N ''
+
+kubectl create secret generic ssh-key-secret --from-file=private-ssh-key=$HOME/.ssh/tigergraph_rsa --from-file=public-ssh-key=$HOME/.ssh/tigergraph_rsa.pub --namespace tigergraph
+```
+
+### 4. Install the kubectl tg cmd
+```bash
+wget https://dl.tigergraph.com/k8s/latest/kubectl-tg -O kubectl-tg  
+sudo install kubectl-tg /usr/local/bin/
+```
+
+### 5. Verify kubectl tg command
+```bash
+kubectl tg version  
+kubectl tg help
+```
+
+### 6. Install the operator
+
+```bash
+kubectl tg init --cluster-scope true --namespace tigergraph # Creates the deployment of operator
 kubectl get pods -n tigergraph -w   # wait for operator pod to reach Running
 ```
 
-### 4. Store the license key
+### 7. Store the license key
 
 ```bash
-LICENSE=$(tr -d '\n' < license.txt)   # strip any accidental newlines
-kubectl create secret generic tg-license \
-  --from-literal=license="$LICENSE" \
+kubectl create secret generic tigergraph-license \
+  --from-literal=license="$TG_LICENSE" \
   -n tigergraph
 ```
 
-### 5. Deploy the TigerGraph cluster
+### 8. Deploy the TigerGraph cluster
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: graphdb.tigergraph.com/v1alpha1
-kind: TigerGraph
-metadata:
-  name: test-cluster
-  namespace: tigergraph
-spec:
-  image: docker.io/tigergraph/tigergraph-k8s:4.1.3
-  imagePullPolicy: IfNotPresent
-  ha: 1
-  listener:
-    type: LoadBalancer
-  privateKeyName: ssh-key-secret
-  replicas: 1 
-  licenseSecretName: tigergraph-license
-  resources:
-    requests:
-      cpu: "2"
-      memory: 4Gi
-    limits:
-      cpu: "4"
-      memory: 8Gi
-
-  storage:
-    type: persistent-claim
-    volumeClaimTemplate:
-      resources:
-        requests:
-          storage: 100G
-      storageClassName: gp3-wait
-EOF
+kubectl apply -f deploy/tigergraph-cluster.yaml
 ```
 
-### 6. Verify the deployment
+### 9. Verify the deployment
 
 ```bash
 # Watch all pods reach Running/Ready
@@ -198,25 +185,19 @@ kubectl get pvc -n tigergraph
 kubectl get svc -n tigergraph
 ```
 
-### 7. Access TigerGraph
+### 10. Access TigerGraph
 
 ```bash
-# RESTPP API
-kubectl port-forward svc/test-cluster-internal-service 9000:9000 -n tigergraph &
-curl http://localhost:9000/restpp/ping
-# Expected: {"error":false,"message":"pong","results":[]}
-
 # GraphStudio Web UI
-kubectl port-forward svc/test-cluster-nginx-external-service 14240:14240 -n tigergraph &
-open http://localhost:14240
+open http://<loadbalancer-ip>:14240 # http://a2f414db1a0ab4442a375d6b0f5cd228-2065564652.ap-south-1.elb.amazonaws.com:14240
 
 # GSQL Shell
 kubectl exec -it test-cluster-0 -n tigergraph -- /home/tigergraph/tigergraph/app/cmd/gsql
 ```
 
----
 
-## Docker Pipeline
+
+<!-- ## Docker Pipeline
 
 For local development and CI without a full K8s cluster:
 
@@ -231,7 +212,7 @@ docker-compose up -d
 docker run --rm tigergraph-operator:dev go test ./... -v
 
 # Tear down
-docker-compose down -v
+docker-compose down -v 
 ```
 
 ### Resource limits (`docker-compose.yml`)
@@ -260,6 +241,7 @@ services:
 volumes:
   tg-data:
 ```
+-->
 
 ---
 
@@ -333,8 +315,8 @@ affinity:
 |---|---|---|
 | 1 | License key rejected at init — invisible newlines from email copy-paste | `tr -d '\n' < license.txt` to sanitize before creating the K8s Secret |
 | 2 | PVCs stuck in `Pending` — no default StorageClass in kind | Patched `standard` StorageClass to be the default |
-| 3 | Operator pod `CrashLoopBackOff` — missing RBAC permissions | Applied bundled `rbac.yaml`; inspected exact error with `kubectl logs` |
-| 4 | Init containers timing out — slow image pull in kind | Pre-pulled image with `docker pull` then `kind load docker-image` |
+| 3 | Operator pod `CrashLoopBackOff` — missing RBAC permissions | Applied bundled `rbac.yaml OR Cloud roles`; inspected exact error with `kubectl logs` |
+| 4 | Init containers timing out — slow image pull in kind | Pre-pulled image with `docker pull`  |
 | 5 | All pods on same worker node — no anti-affinity by default | Added `podAntiAffinity` to CR spec manually |
 | 6 | Pods stuck at `0/1 Ready` — readiness probe failing during startup | Increased `initialDelaySeconds` from 30 → 120 |
 
@@ -358,7 +340,7 @@ The following screenshots should be captured and attached to your submission:
 | 9 | PVCs Bound | `kubectl get pvc -n tigergraph` |
 | 10 | CR status: Ready | `kubectl get tigergraphcluster -o yaml` |
 | 11 | Services created | `kubectl get svc -n tigergraph` |
-| 12 | GraphStudio Web UI | Browser at `http://13.201.115.5:30459` |
+| 12 | GraphStudio Web UI | http://a2f414db1a0ab4442a375d6b0f5cd228-2065564652.ap-south-1.elb.amazonaws.com:14240 |
 | **13** | **Pod self-healing** | **`kubectl delete pod test-cluster-0` then watch recovery** |
 | 14 | Cluster events log | `kubectl get events -n tigergraph` |
 | 15 | Operator reconcile logs | `kubectl logs deploy/tigergraph-operator-controller-manager -n tigergraph` |
@@ -374,12 +356,16 @@ agivant-tigergraph-assignment/
 ├── controllers/
 │   ├── test_func.go  # Operator reconciliation logic
 │   ├── tigergraph_test.go  unit-test file
-│   └── types.go                 # Unit test suite (18 tests)
+│   └── types.go      # Unit test  
+├── images/ # Proof of deployments and installation 
 ├── deploy/
-│   ├── operator.yaml                    # CRDs operator Deployment
+│   ├── tigergraph_crd.yaml     # tigergraph CRD
+│   ├── tigergraph-cluster.yaml # CR operator Deployment
+|   ├── sc.yaml                 # storageclass 
 ├── go.mod
 └── README.md                            # This file
 ```
+
 
 ---
 ## Project testing
