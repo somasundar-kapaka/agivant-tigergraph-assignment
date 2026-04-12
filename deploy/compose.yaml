@@ -31,7 +31,5 @@ services:
 volumes:
   tg_data:
     driver: local
-  tg_log:
-    driver: local
   tg_app:
     driver: local
