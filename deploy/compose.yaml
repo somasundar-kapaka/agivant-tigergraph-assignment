@@ -28,15 +28,6 @@ services:
           cpus: "2"
           memory: 4G
 
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9000/api/ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 120s
-
-    restart: unless-stopped
-
 volumes:
   tg_data:
     driver: local
