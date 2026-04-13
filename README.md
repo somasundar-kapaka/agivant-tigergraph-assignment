@@ -163,10 +163,12 @@ kubectl create secret generic tigergraph-license \
   -n tigergraph
 ```
 
-### 8. Deploy the TigerGraph cluster
+### 8. Deploy the TigerGraph cluster and StrorageClass
 
 ```bash
+kubectl apply -f deploy/tigergraph-crd.yaml
 kubectl apply -f deploy/tigergraph-cluster.yaml
+kubectl apply -f deploy/sc.yaml
 ```
 
 ### 9. Verify the deployment
